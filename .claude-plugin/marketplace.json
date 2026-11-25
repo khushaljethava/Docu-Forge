@@ -1,0 +1,18 @@
+{
+  "name": "docu-forge",
+  "description": "Long narrated documentaries, true crime and Vox-style explainers (5-30+ min): a code-rendered cinematic engine, optional AI collage inserts, chapter-by-chapter render and join.",
+  "owner": { "name": "khushaljethava", "url": "https://github.com/khushaljethava" },
+  "plugins": [
+    {
+      "name": "docu-forge",
+      "description": "Long narrated documentaries, true crime and Vox-style explainers (5-30+ min): a code-rendered cinematic engine, optional AI collage inserts, chapter-by-chapter render and join.",
+      "version": "1.0.0",
+      "source": "./",
+      "author": { "name": "khushaljethava", "url": "https://github.com/khushaljethava" },
+      "homepage": "https://github.com/khushaljethava/Docu-Forge",
+      "repository": "https://github.com/khushaljethava/Docu-Forge",
+      "license": "MIT",
+      "keywords": ["skills", "video", "documentary", "explainer", "true-crime", "youtube", "long-form", "skia", "ffmpeg"]
+    }
+  ]
+}
