@@ -148,6 +148,10 @@ def cmd_credits(a):
             unclear.append(p["id"])
         rows.append(f"| {p['id']} | {p.get('what', '')} | {p.get('credit', '')} | {lic} | {p.get('source', '')} |")
     md = ("# Image credits\n\n| ID | What | Credit | Licence | Source |\n|---|---|---|---|---|\n" + "\n".join(rows) + "\n")
+    icp = proj / "assets" / "icons" / "sources.json"
+    if icp.exists():
+        md += "\n## Icons\n\n| Icon | Credit | Licence | Source |\n|---|---|---|---|\n" + "\n".join(
+            f"| {n} | {r['credit']} | {r['license']} | {r['source']} |" for n, r in json.loads(icp.read_text()).items()) + "\n"
     recs = [l for l in spec.get("recreations", [])]
     if recs:
         md += "\n## Recreations drawn in code\n\n" + "\n".join(f"- {r}" for r in recs) + "\n"

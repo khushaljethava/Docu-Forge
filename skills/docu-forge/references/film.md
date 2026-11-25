@@ -67,6 +67,7 @@ def build_film(doc):
 | `XMarker(x, y, label, t_in)` | A map marker with a typed-on label | `side`, `size`, `label_size` |
 | `MapPin(x, y, label, t_in)` | A pulsing red pin with a typewriter label | |
 | `Route(a, b, t_in)` | A white travel arc drawing on | `bend`, `width` |
+| `Icon(doc.icon(name), x, y, size, t_in)` | A line icon drawing itself on (`get_icons.py`); infographic rows, cause chains | `badge` (disc colour), `rgb`, `weight`, `dur` |
 
 Every item takes `t_out` (fade out), `z` (stacking order) and `sfx=False` (mute its own sounds). Write a new item by subclassing `Item`: give it `bounds()` for culling, `draw(c, res, t)`, and optionally `cues()` and `shakes()`. A big static drawing (a city street map, a floor plan) subclasses `Cached` too, so it is drawn once and reused.
 

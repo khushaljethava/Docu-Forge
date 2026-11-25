@@ -26,6 +26,8 @@ All script paths below are relative to this skill's folder (`~/.claude/skills/do
 | `scripts/split_takes.py` | Cuts section takes into one clip per line, flags bad cuts |
 | `scripts/build_narration.py` | `audio/narration.m4a` + `audio/timing.json` — the master clock |
 | `scripts/fetch_commons.py` | Wikimedia Commons search/download with licences → `credits.md` |
+| `scripts/fetch_bing.py` | **New.** Bing image search ([bing-image-downloader](https://pypi.org/project/bing-image-downloader/)): photos, cartoons (`--filter clipart`), line art; `--cc` for Creative Commons. Saves every image's URL + source page to `sources.json`, a numbered contact sheet, and `use` adds a pick to `photos.json` with its source |
+| `scripts/get_icons.py` | **New.** Tabler line icons (MIT) for the `Icon` item, which draws itself on stroke by stroke; sources recorded |
 | `scripts/make_map.py` | Public-domain boundary maps |
 | `scripts/prep_assets.py` | Grades all images into one look; board textures |
 | `scripts/engine.py` | Camera, spotlight, items, maps, looks, film finish |
@@ -35,7 +37,11 @@ All script paths below are relative to this skill's folder (`~/.claude/skills/do
 | `scripts/burn_captions.py` | Burns captions (`highlighter`/`clean`/`paper`/`redbar`), `--srt-only` for SRT |
 | `scripts/join_chapters.py` | **New.** Conforms + joins chapters and AI inserts, one loudnorm pass, merged SRT |
 
-Engine needs Python 3.9+, `pip install skia-python numpy pillow`, ffmpeg. AI inserts also need `requests` and `ATLASCLOUD_API_KEY`.
+Engine needs Python 3.9+, `pip install skia-python numpy pillow`, ffmpeg. Bing images need `bing-image-downloader`. AI inserts also need `requests` and `ATLASCLOUD_API_KEY`.
+
+**Any language.** Hindi, Marathi, Arabic etc. work end to end: text with complex scripts is shaped (conjuncts, vowel signs) and word timing, take splitting and captions count letters in any script. Put a matching font in `<project>/fonts/` for every role (e.g. Noto Sans Devanagari Bold as `cond.ttf`, `label.ttf`, `mono.ttf`; Regular as `labelm.ttf`; Noto Serif Devanagari as `serif.ttf`). edge-tts gives natural voices in many languages: `tts_say.py --cmd 'edge-tts --voice hi-IN-SwaraNeural -f {txt} --write-media {out}.mp3 && ffmpeg -y -i {out}.mp3 {out}'`.
+
+**Shorts / Reels.** Render `--size 1080x1920`. At 1080 wide, zoom 1 shows 3840 × 6827 world px, so stack clusters in one vertical column. Captions scale to the short side and sit above the platform UI in portrait. 20 s ≈ 45–50 Hindi or English words.
 
 ## Layout
 
@@ -71,7 +77,7 @@ Keep ONE look per film, or one per act at most. A long film changing board every
 4. **Time only moves forward after the cold open** (one bridge line allowed).
 5. **Phone-readable type.** Big condensed caps, ≥3% frame height.
 6. **Less is more.** Strings fade, old items dim, pull-backs stay composed.
-7. **Nothing invented that looks real.** Real images get credits; code-drawn documents are labelled recreations; AI images illustrate, never evidence a real event or person. For true crime this is strict: no AI faces of victims, suspects or real people.
+7. **Nothing invented that looks real.** Real images get credits; code-drawn documents are labelled recreations; AI images illustrate, never evidence a real event or person. For true crime this is strict: no AI faces of victims, suspects or real people, and no web photos of real people standing in for anyone in the case (unrelated workers shown as "the labourers" accuse strangers); use places, objects, icons and cartoons. Web images found via Bing are illustrative and are captioned so in `what`.
 8. **One voice, one accent colour, one style anchor for the whole film.** Across chapters, nothing drifts.
 9. **AI motion is subtle.** Slow 2D push-in, layer parallax, one living element. Forbid in every prompt: camera shake, 3D rotation, face/text morphing, style drift.
 
@@ -97,7 +103,13 @@ Stop at each **Gate** for the user's approval.
 
 1. **Brief + outline.** Research, write `brief.md` and `outline.md` (chapters, minutes, the throughline, where inserts go). **Gate:** outline approved.
 2. **Chapter scripts.** `new_project.py chNN_name` per chapter; write each `script.json` (takes → lines with `text`, `spoken`, `hero`, `typed`, plus `fact_notes` with sources). Run `make_beats.py` per chapter, fix every lint. **Gate:** user approves all `beats.md` including facts.
-3. **Images.** Per chapter `photos.json`; `fetch_commons.py` for archives, user files in `<chapter>/assets/photos/`. `references/archive.md` for rights. List every beat with no usable image → insert candidates.
+3. **Images.** Per chapter `photos.json`; `fetch_commons.py` for archives, user files in `<chapter>/assets/photos/`. `references/archive.md` for rights. List every beat with no usable image → insert candidates. Give every line a real visual, mixing:
+   - **Real photos** of places and objects: Commons first, then `fetch_bing.py search "<query>" --cc --filter photo`. Read each `_sheet.jpg` contact sheet, pick, then `fetch_bing.py use bing/<slug>/NN.jpg --id P01 --what "..."`. Every pick keeps its image URL + source page; `fetch_commons.py credits` writes them to `credits.md` and flags unverified rights.
+   - **Maps** with `make_map.py` + `GeoMap`/`RegionFill`/`MapPin` (Natural Earth is public domain; avoid GADM-derived files, they are non-commercial).
+   - **Infographics**: `Counter`, `Card`, rows of `Icon`s for counts, `BigText` bars.
+   - **Icons and line animation**: `get_icons.py get phone-call users clock-hour-12`, then `Icon(doc.icon("users"), x, y, 700, W(3, "word"), badge=RED)`; tie them with `StringLine`/`Route` for chains of cause.
+   - **Cartoons**: `fetch_bing.py search "... cartoon" --filter clipart` (no trademarked characters).
+   - Searches run in parallel safely (sources are merged under a lock).
 4. **Scratch voice, all chapters.** `tts_say.py` → `split_takes.py` → `build_narration.py`. Listen to every flagged line. Sum the runtimes and check against the brief; tighten scripts now, not later.
 5. **AI inserts (optional).** Read `references/vox/atlas-cloud-api.md` and the Visual Grammar part of `references/vox/vox-style-guide.md`. Verify endpoints/model IDs on atlascloud.ai/docs first.
    - Quote cost first: `inserts × (~$0.10 image + ~$0.11/s video)`. **Gate:** user approves spend.

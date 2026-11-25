@@ -24,7 +24,7 @@ def words_with_times(seg):
     disp = seg["caption"].replace('"', "").split()
     lens = []
     for w in disp:
-        letters = len(re.sub(r"[^A-Za-z]", "", w))
+        letters = len(re.sub(r"[\W\d_]", "", w))
         if re.search(r"\d", w):                      # 1929 is long when spoken ("nineteen twenty-nine")
             letters = max(letters, 6 * len(re.sub(r"[^0-9]", "", w)) // 2 + 4)
         lens.append(max(1, letters))
@@ -35,16 +35,16 @@ def words_with_times(seg):
     return out
 
 
-def chunks_for(timing, style):
+def chunks_for(timing, style, mx=None):
     """[{'words': [(w, t)], 't0', 't1'}], breaking at punctuation where possible."""
-    mx = MAX_WORDS[style]
+    mx = mx or MAX_WORDS[style]
     out = []
     for seg in timing["segments"]:
         ws = words_with_times(seg)
         cur, line = [], []
         for i, (w, t) in enumerate(ws):
             cur.append((w, t))
-            if len(cur) >= mx or (w[-1] in ".,?!;:" and len(cur) >= max(2, mx // 2)) or i == len(ws) - 1:
+            if len(cur) >= mx or (w[-1] in ".,?!;:।" and len(cur) >= max(2, mx // 2)) or i == len(ws) - 1:
                 line.append({"words": cur, "t0": cur[0][1]}); cur = []
         for a, b in zip(line, line[1:]):
             a["t1"] = b["t0"]
@@ -56,9 +56,11 @@ def chunks_for(timing, style):
 class Captions:
     def __init__(self, style, width, height, timing, fonts_dir=None):
         self.style, self.W, self.H = style, width, height
-        self.k = width / 1920.0
+        # ponytail: short side sets type size; portrait (Shorts/Reels) gets 1.4x and sits above the platform UI
+        self.portrait = height > width
+        self.k = min(width, height) / 1080.0 * (1.4 if self.portrait else 1.0)
         self.res = Res(width / 3840.0, None, fonts_dir)
-        self.chunks = chunks_for(timing, style)
+        self.chunks = chunks_for(timing, style, 3 if self.portrait else None)
         self.surface = skia.Surface.MakeRaster(skia.ImageInfo.Make(width, height, skia.ColorType.kRGBA_8888_ColorType, skia.AlphaType.kPremul_AlphaType))
 
     def active(self, t):
@@ -82,7 +84,7 @@ class Captions:
         return txt.upper() if upper else txt
 
     def _highlighter(self, cv, c, t):
-        k = self.k; size = 66 * k; y = self.H * 0.897; f = "cond"
+        k = self.k; size = 66 * k; y = self.H * (0.75 if self.portrait else 0.897); f = "cond"
         words = [w.upper() for w, _ in c["words"]]
         gap = size * 0.28
         widths = [text_width(self.res, w, size, f, 0.03) for w in words]

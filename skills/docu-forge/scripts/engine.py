@@ -156,7 +156,7 @@ class Doc:
         """When `word` is spoken in line i, by its letter share of the line (pauses spread evenly).
         Search the SPOKEN text: "1929" is spoken "nineteen twenty-nine", so ask for "nineteen"."""
         vo = self.seg[i]["vo"]
-        letters = re.sub(r"[^a-z]", "", vo.lower())
+        letters = re.sub(r"[\W\d_]", "", vo.lower())
         idx, start = -1, 0
         for _ in range(nth + 1):
             idx = vo.lower().find(word.lower(), start); start = idx + 1
@@ -164,7 +164,7 @@ class Doc:
                 break
         if idx < 0:
             raise ValueError(f"{word!r} (occurrence {nth}) is not in the spoken text of line {i}: {vo!r}")
-        before = len(re.sub(r"[^a-z]", "", vo[:idx].lower()))
+        before = len(re.sub(r"[\W\d_]", "", vo[:idx].lower()))
         return self.L(i) + (self.E(i) - self.L(i)) * before / max(1, len(letters)) + 0.04
 
     def on(self, pr, fx, fy):
@@ -183,6 +183,13 @@ class Doc:
         if not p.exists():
             raise SystemExit(f"{p} not found: add the map to map.json and run make_map.py")
         return json.loads(p.read_text())
+
+    def icon(self, name):
+        """Stroke path of assets/icons/<name>.svg for Icon(); get_icons.py fetches Tabler icons (MIT)."""
+        p = self.dir / "assets" / "icons" / f"{name}.svg"
+        if not p.exists():
+            raise SystemExit(f"{p} not found: run get_icons.py --project {self.dir.name} {name}")
+        return svg_icon(p.read_text())
 
 
 # ---------------------------------------------------------------- resources
@@ -268,8 +275,39 @@ def paint(rgb=(0, 0, 0), a=1.0, stroke=None, blur=None, aa=True):
     return p
 
 
+_FC = None
+
+
+def _complex(text, res=None, font=None):
+    # ponytail: Indic/Arabic etc. need shaping (matras, conjuncts); per-glyph drawing breaks them, and the
+    # paragraph path also falls back to another font for glyphs the role's face lacks. Tracking is ignored there.
+    if any(ord(ch) >= 0x0590 for ch in text):
+        return True
+    return res is not None and 0 in res.font(font, 10).textToGlyphs(text.replace(" ", ""))
+
+
+def _para(res, text, size, font, rgb=(0, 0, 0), a=1.0):
+    global _FC
+    if _FC is None:
+        _FC = skia.textlayout.FontCollection(); _FC.setDefaultFontManager(skia.FontMgr())
+    tf = res.typeface(font)
+    ts = skia.textlayout.TextStyle(); ts.setFontSize(size); ts.setForegroundColor(paint(rgb, a))
+    ts.setFontFamilies([tf.getFamilyName(), "Noto Sans Devanagari"]); ts.setFontStyle(tf.fontStyle())
+    b = skia.textlayout.ParagraphBuilder(skia.textlayout.ParagraphStyle(), _FC, skia.Unicode())
+    b.pushStyle(ts); b.addText(text); p = b.Build(); p.layout(1e7)
+    return p
+
+
 def draw_text(c, res, text, x, y, size, font="serif", rgb=CREAM, a=1.0, track=0.0, align="left", reveal=None):
     """Draw text with letter tracking (em fraction). reveal=n draws only the first n characters."""
+    if _complex(text, res, font):
+        total = _para(res, text, size, font).LongestLine
+        x0 = x - total / 2 if align == "center" else x - total if align == "right" else x
+        part = text if reveal is None else text[:int(reveal)]
+        if part:
+            p = _para(res, part, size, font, rgb, a)
+            p.paint(c, x0, y - p.AlphabeticBaseline)
+        return total
     f = res.font(font, size)
     widths = f.getWidths(f.textToGlyphs(text))
     gap = track * size
@@ -287,6 +325,8 @@ def draw_text(c, res, text, x, y, size, font="serif", rgb=CREAM, a=1.0, track=0.
 
 
 def text_width(res, text, size, font="serif", track=0.0):
+    if _complex(text, res, font):
+        return _para(res, text, size, font).LongestLine
     f = res.font(font, size)
     return sum(f.getWidths(f.textToGlyphs(text))) + track * size * (len(text) - 1)
 
@@ -1368,6 +1408,125 @@ class XMarker(Item):
             draw_text(c, res, self.label, tx, ty, self.ls * k, "label", (0, 0, 0), 0.5 * a, 0.04, "left" if s > 0 else "right", reveal=n + 0.999)
             c.restore()
         draw_text(c, res, self.label, tx, ty, self.ls * k, "label", self.lrgb, a, 0.04, "left" if s > 0 else "right", reveal=n + 0.999)
+
+
+# ---------------------------------------------------------------- icons (stroke SVGs, e.g. Tabler Icons, MIT)
+_NUM = re.compile(r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
+_FLAG = re.compile(r"[\s,]*([01])")
+_NUMAT = re.compile(r"[\s,]*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)")
+_CMD = re.compile(r"([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)")
+_NARGS = dict(M=2, L=2, H=1, V=1, C=6, S=4, Q=4, T=2, A=7, Z=0)
+
+
+def _arc_nums(s):
+    """Arc arguments, where the two flags may be packed without separators ("a1 1 0 01 2 2")."""
+    out, i = [], 0
+    while True:
+        m = (_FLAG if len(out) % 7 in (3, 4) else _NUMAT).match(s, i)
+        if not m:
+            return out
+        out.append(float(m.group(1))); i = m.end()
+
+
+def svg_path(d):
+    """skia.Path from SVG path data: every command, absolute and relative."""
+    p = skia.Path(); x = y = sx = sy = cx = cy = 0.0; prev = ""
+    for cmd, args in _CMD.findall(d):
+        U, rel = cmd.upper(), cmd.islower()
+        if U == "Z":
+            p.close(); x, y = sx, sy; prev = "Z"; continue
+        nums = _arc_nums(args) if U == "A" else [float(n) for n in _NUM.findall(args)]
+        n = _NARGS[U]
+        for i in range(0, len(nums) - n + 1, n):
+            v = nums[i:i + n]
+            ox, oy = (x, y) if rel else (0.0, 0.0)
+            if U == "M" and i == 0:
+                x, y = ox + v[0], oy + v[1]; p.moveTo(x, y); sx, sy = x, y
+            elif U in "ML":                                   # extra M pairs are implicit linetos
+                x, y = ox + v[0], oy + v[1]; p.lineTo(x, y)
+            elif U == "H":
+                x = ox + v[0]; p.lineTo(x, y)
+            elif U == "V":
+                y = oy + v[0]; p.lineTo(x, y)
+            elif U == "C":
+                x1, y1, cx, cy, x, y = ox + v[0], oy + v[1], ox + v[2], oy + v[3], ox + v[4], oy + v[5]
+                p.cubicTo(x1, y1, cx, cy, x, y)
+            elif U == "S":
+                x1, y1 = (2 * x - cx, 2 * y - cy) if prev in ("C", "S") else (x, y)
+                cx, cy, x, y = ox + v[0], oy + v[1], ox + v[2], oy + v[3]
+                p.cubicTo(x1, y1, cx, cy, x, y)
+            elif U == "Q":
+                cx, cy, x, y = ox + v[0], oy + v[1], ox + v[2], oy + v[3]
+                p.quadTo(cx, cy, x, y)
+            elif U == "T":
+                cx, cy = (2 * x - cx, 2 * y - cy) if prev in ("Q", "T") else (x, y)
+                x, y = ox + v[0], oy + v[1]; p.quadTo(cx, cy, x, y)
+            elif U == "A":
+                x, y = ox + v[5], oy + v[6]
+                p.arcTo(v[0], v[1], v[2], skia.Path.ArcSize.kLarge_ArcSize if v[3] else skia.Path.ArcSize.kSmall_ArcSize,
+                        skia.PathDirection.kCW if v[4] else skia.PathDirection.kCCW, x, y)
+            prev = U
+    return p
+
+
+def svg_icon(text):
+    """One stroke path in the icon's own units (24 x 24 for Tabler) from SVG markup:
+    path, line, polyline, polygon, circle, ellipse, rect. Invisible helper shapes (stroke="none") are skipped."""
+    out = skia.Path()
+    for tag, attrs in re.findall(r"<(path|line|polyline|polygon|circle|ellipse|rect)\b([^>]*)>", text):
+        a = dict(re.findall(r'([\w-]+)="([^"]*)"', attrs))
+        if a.get("stroke") == "none":
+            continue
+        f = lambda k: float(a.get(k) or 0)
+        if tag == "path":
+            out.addPath(svg_path(a.get("d", "")))
+        elif tag == "line":
+            out.moveTo(f("x1"), f("y1")); out.lineTo(f("x2"), f("y2"))
+        elif tag in ("polyline", "polygon"):
+            pts = [float(v) for v in _NUM.findall(a.get("points", ""))]
+            out.moveTo(pts[0], pts[1])
+            for i in range(2, len(pts) - 1, 2):
+                out.lineTo(pts[i], pts[i + 1])
+            if tag == "polygon":
+                out.close()
+        elif tag == "circle":
+            out.addCircle(f("cx"), f("cy"), f("r"))
+        elif tag == "ellipse":
+            out.addOval(skia.Rect.MakeLTRB(f("cx") - f("rx"), f("cy") - f("ry"), f("cx") + f("rx"), f("cy") + f("ry")))
+        elif tag == "rect":
+            r = skia.Rect.MakeXYWH(f("x"), f("y"), f("width"), f("height")); rr = f("rx") or f("ry")
+            out.addRRect(skia.RRect.MakeRectXY(r, rr, rr)) if rr else out.addRect(r)
+    return out
+
+
+class Icon(Item):
+    """A line icon that draws itself on, stroke by stroke (the line-animation look of explainers and infographics).
+    path: doc.icon("name"). badge: an rgb disc that pops in behind it. box: the icon's own units (24 for Tabler)."""
+    z = 40
+
+    def __init__(self, path, x, y, size, t_in, dur=0.8, t_out=None, rgb=WHITE, weight=2.0, badge=None, box=24,
+                 z=None, sfx=True):
+        super().__init__(t_in, t_out, z, sfx)
+        self.path, self.x, self.y, self.size, self.dur = path, x, y, size, dur
+        self.rgb, self.weight, self.badge, self.box = rgb, weight, badge, box
+
+    def bounds(self, res):
+        r = self.size * 0.8
+        return skia.Rect.MakeLTRB(self.x - r, self.y - r, self.x + r, self.y + r)
+
+    def cues(self):
+        return [("pencil", self.t_in, 0.7, {"dur": self.dur})]
+
+    def draw(self, c, res, t):
+        a = self.fade(t) * ramp(t, self.t_in, 0.12)
+        if a <= 0:
+            return
+        if self.badge:
+            c.drawCircle(self.x, self.y, self.size * 0.74 * ease_out_back(ramp(t, self.t_in, 0.35)), paint(self.badge, a))
+        k = self.size / self.box
+        c.save(); c.translate(self.x - self.size / 2, self.y - self.size / 2); c.scale(k, k)
+        c.drawPath(partial_path(self.path, ease_in_out(ramp(t, self.t_in, self.dur))), paint(self.rgb, a, stroke=self.weight))
+        c.restore()
 
 
 # ---------------------------------------------------------------- film
