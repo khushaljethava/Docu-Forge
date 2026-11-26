@@ -23,6 +23,7 @@ All script paths below are relative to this skill's folder (`~/.claude/skills/do
 | `scripts/new_project.py` | New chapter from `assets/template/` (or `--example` documentary) |
 | `scripts/make_beats.py` | Writes `beats.md`; lints chronology, line length, digits in spoken text |
 | `scripts/tts_say.py` | Scratch voice (espeak-ng / say / any TTS command) |
+| `scripts/tts_deepgram.py` | Final Hindi voice: Deepgram Flux, Rajesh (`flux-rajesh-hi`), expressivity 1 |
 | `scripts/split_takes.py` | Cuts section takes into one clip per line, flags bad cuts |
 | `scripts/build_narration.py` | `audio/narration.m4a` + `audio/timing.json` — the master clock |
 | `scripts/fetch_commons.py` | Wikimedia Commons search/download with licences → `credits.md` |
@@ -39,7 +40,7 @@ All script paths below are relative to this skill's folder (`~/.claude/skills/do
 
 Engine needs Python 3.9+, `pip install skia-python numpy pillow`, ffmpeg. Bing images need `bing-image-downloader`. AI inserts also need `requests` and `ATLASCLOUD_API_KEY`.
 
-**Any language.** Hindi, Marathi, Arabic etc. work end to end: text with complex scripts is shaped (conjuncts, vowel signs) and word timing, take splitting and captions count letters in any script. Put a matching font in `<project>/fonts/` for every role (e.g. Noto Sans Devanagari Bold as `cond.ttf`, `label.ttf`, `mono.ttf`; Regular as `labelm.ttf`; Noto Serif Devanagari as `serif.ttf`). edge-tts gives natural voices in many languages: `tts_say.py --cmd 'edge-tts --voice hi-IN-SwaraNeural -f {txt} --write-media {out}.mp3 && ffmpeg -y -i {out}.mp3 {out}'`.
+**Any language.** Hindi, Marathi, Arabic etc. work end to end: text with complex scripts is shaped (conjuncts, vowel signs) and word timing, take splitting and captions count letters in any script. Put a matching font in `<project>/fonts/` for every role (e.g. Noto Sans Devanagari Bold as `cond.ttf`, `label.ttf`, `mono.ttf`; Regular as `labelm.ttf`; Noto Serif Devanagari as `serif.ttf`). For Hindi narration use `tts_deepgram.py` (Deepgram Flux, Rajesh, expressivity 1, needs `DEEPGRAM_API_KEY`). edge-tts is a free fallback: `tts_say.py --cmd 'edge-tts --voice hi-IN-SwaraNeural -f {txt} --write-media {out}.mp3 && ffmpeg -y -i {out}.mp3 {out}'`.
 
 **Shorts / Reels.** Render `--size 1080x1920`. At 1080 wide, zoom 1 shows 3840 × 6827 world px, so stack clusters in one vertical column. Captions scale to the short side and sit above the platform UI in portrait. 20 s ≈ 45–50 Hindi or English words.
 

@@ -27,6 +27,23 @@ python3 scripts/build_narration.py --project my-film                 # natural r
 python3 scripts/build_narration.py --project my-film --target 88     # fit to 88 s (0.90 to 1.15x only)
 ```
 
+## Hindi final voice: Deepgram Flux (default)
+
+`scripts/tts_deepgram.py` uses Deepgram Flux TTS (`POST /v2/speak`). The default is **`flux-rajesh-hi`** (Rajesh, male Hindi) at **expressivity 1**.
+
+```bash
+export DEEPGRAM_API_KEY=...            # never commit it; or pass --key
+python3 scripts/tts_deepgram.py --project ch01                    # Rajesh, expressivity 1
+python3 scripts/tts_deepgram.py --project ch01 --only T02_case    # re-record one take
+python3 scripts/split_takes.py --project ch01 && python3 scripts/build_narration.py --project ch01
+```
+
+- Write `spoken` in Devanagari. Deepgram normalises numbers and dates in Hindi, but words are safer for names and years.
+- **Expressivity** ranges from `-2` (calm) to `2` (animated), whole numbers only. Keep `1` for the film. Override it on a take or a line with `"expressivity": 2` only for a real peak.
+- **Speed** ranges from 0.5 to 1.5 (`--speed`, or `"speed"` on a take or line). Prefer `build_narration.py --target` for fitting the length.
+- It makes one call per line with the same voice and settings. The script writes exact cut points to `audio/overrides.json`, so `split_takes.py` doesn't guess.
+- Other Hindi voices: `ajay arjun nikhil rahul vikram` (male), `anjali divya jyoti pallavi prachi ritu shreya sunita` (female), as `flux-<name>-hi`. Use one voice for the whole film.
+
 ## Checking the split
 
 `split_takes.py` measures every line's speaking rate in letters per second of actual speech, and flags lines more than 35% off the median. A flag nearly always means one of three things:
